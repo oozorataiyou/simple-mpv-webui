@@ -542,11 +542,11 @@ local function build_status_response()
   return utils.format_json(values)
 end
 
-local function handle_post(path)
-  local components = string.gmatch(path, "[^/]+")
+local function handle_post(request)
+  local components = string.gmatch(request.path, "[^/]+")
   local api_prefix = components()
   if api_prefix ~= 'api' then
-    return 404, get_content_type('plain'), "Error: Requested URL /"..path.." not found"
+    return 404, get_content_type('plain'), "Error: Requested URL /"..request.path.." not found"
   end
   local command = components()
   local param1 = components() or ""
@@ -554,7 +554,7 @@ local function handle_post(path)
 
   local f = commands[command]
   if f ~= nil then
-    local _, success, ret = f(param1, param2)
+    local _, success, ret = f(param1, param2, request.data)
     if success and ret == nil then
       ret = "success"
     end
@@ -565,7 +565,7 @@ local function handle_post(path)
       return 400, get_content_type('json'), response_json
     end
   else
-    return 404, get_content_type('plain'), "Error: Requested URL /"..path.." not found"
+    return 404, get_content_type('plain'), "Error: Requested URL /"..request.path.." not found"
   end
 end
 
@@ -615,7 +615,7 @@ local function handle_request(request, passwd)
     request.password = nil
   end
   if request.method == "POST" then
-    return handle_post(request['path'])
+    return handle_post(request)
 
   elseif request.method == "GET" then
     if request.path == "api/status" or request.path == "api/status/" then
@@ -655,9 +655,32 @@ local function parse_request(connection)
       local auth_components = string.gmatch(dec64(auth64), "[^:]+")
       request.user = auth_components()
       request.password = auth_components()
+    elseif string.starts(string.lower(line), "content-length") then
+      request.length = tonumber(string.sub(line, 16))
+    elseif string.starts(string.lower(line), "content-type") then
+      local content_type_match = string.gmatch(line, "[Cc]ontent%-[Tt]ype:%s(.*)$")
+      content_type = content_type_match()
+      if string.match(content_type, ";%s") then
+        content_type_match = string.gmatch(content_type, "(.*);%s.*$")
+        content_type = content_type_match()
+      end
+      request.content_type = content_type
     end
     line = connection:receive()
   end
+  local data = {}
+  if request.length ~= nil and
+          request.length ~= 0 and
+          request.content_type == "application/json" then
+    data = connection:receive(request.length)
+    if data ~= {} then
+      data = utils.parse_json(data)
+      if data == nil then
+        data = {error = "POST data doesn't contain valid JSON!"}
+      end
+    end
+  end
+  request.data = data
   return request
 end
 

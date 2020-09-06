@@ -36,11 +36,11 @@ def get_script_opts(options):
     return {"options": [f"--script-opts={','.join(option_strings)}"]}
 
 
-def send(command, arg=None, expect=200, status=None):
+def send(command, arg=None, data=None, expect=200, status=None):
     api = f"api/{command}"
     if arg is not None:
         api += f"/{arg}"
-    resp = requests.post(get_uri(api))
+    resp = requests.post(get_uri(api), json=data)
     assert resp.status_code == expect
     if status is not None:
         return get_status()[status]
@@ -264,6 +264,60 @@ class TestsRequests:
         status = get_status()
         assert len(status["playlist"]) == 2
         assert get_order(status) == order[:2]
+
+
+def test_loadfile(mpv_instance):
+    def send_loadfile(data):
+        return send(
+            "loadfile",
+            data=data,
+            status="playlist",
+        )
+
+    send("pause")
+    status = get_status()
+    assert status["playlist"][0]["current"] is True
+    assert len(status["playlist"]) == 3
+
+    playlist = send_loadfile(
+        {
+            "url": "./environment/test_media/01 - dummy.mp3",
+            "mode": "append-play",
+        }
+    )
+
+    assert len(playlist) == 4
+    assert playlist[-1]["filename"] == "./environment/test_media/01 - dummy.mp3"
+
+    playlist = send_loadfile(
+        {
+            "url": "./environment/test_media/01 - dummy.mp3",
+            "mode": "append",
+        }
+    )
+
+    assert len(playlist) == 5
+    assert playlist[-2]["filename"] == "./environment/test_media/01 - dummy.mp3"
+    assert playlist[-1]["filename"] == "./environment/test_media/01 - dummy.mp3"
+
+    playlist = send_loadfile(
+        {
+            "url": "./environment/test_media/01 - dummy.mp3",
+            "mode": "replace",
+        }
+    )
+
+    assert len(playlist) == 1
+    assert playlist[0]["filename"] == "./environment/test_media/01 - dummy.mp3"
+
+    playlist = send_loadfile(
+        {
+            "url": "./environment/test_media/01 - dummy.mp3",
+        }
+    )
+
+    assert len(playlist) == 1
+    assert playlist[0]["filename"] == "./environment/test_media/01 - dummy.mp3"
 
 
 @pytest.mark.parametrize(

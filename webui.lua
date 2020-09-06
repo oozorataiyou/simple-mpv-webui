@@ -379,6 +379,20 @@ local commands = {
 
   quit = function()
     return pcall(mp.commandv, 'osd-msg', 'quit')
+  end,
+
+  loadfile = function(_, _, data)
+    if data.error ~= nil then
+      return true, false, data.error
+    end
+    if data == nil or type(data.url) ~= "string" then
+      return true, false, "No file provided! `url` key must contain a string."
+    end
+    mode = data.mode
+    if mode ~= "replace" and mode ~= "append" and mode ~= "append-play" then
+      mode = "replace"
+    end
+    return pcall(mp.commandv, "loadfile", data.url, mode)
   end
 }
 
